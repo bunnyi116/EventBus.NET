@@ -1,43 +1,44 @@
 ﻿using EventBus.NET;
 
-// 创建事件总线（对外访问可以使用IEventSubscriber接口进行访问，这里就不细分了）
-var eventBus = new EventBus<MyEventSender, EventArgs>();
+var events = new EventBus<MyEventSender, EventArgs>();
+IEventSubscriber<MyEventSender, EventArgs> subscriber = events; // 对外接口
+IEventPublisher<MyEventSender, EventArgs> publisher = events;   // 内部接口(内部当然也可以直接使用EventBus实例, 这里只是一个示范)
 
-// 事件发布时，在调用用户的处理程序时捕捉到异常的事件
-eventBus.OnCallbackException += (ex) =>
-{
-    Console.WriteLine(ex.Message);
-};
 
-// 订阅事件（基类订阅, 子类发布事件，基类订阅者也会被通知）
-var subscription1 = eventBus.Subject<EventArgs>((sender, args) =>
+var ex = subscriber.SubjectException((sender, args) =>
 {
-    Console.WriteLine($"{sender.SenderName}: {args.BaseMessage}  ==>  {typeof(EventArgs).Name}");
-    // throw new Exception("错误");  // Exception test
+    Console.WriteLine(args.Message);
 });
 
-// 订阅事件
-var subscription2 = eventBus.Subject<MyEventArgs>((sender, args) =>
+var sub1 = subscriber.Subject<EventArgs>((sender, args) =>
 {
-    Console.WriteLine($"{sender.SenderName}: {args.Message}  ==>  {typeof(MyEventArgs).Name}");
+    Console.WriteLine($"[EventArgs] {sender.SenderName}: {args.BaseMessage}");
+    throw new Exception("这是订阅者1抛出的异常");  // 模拟异常抛出
 });
 
-// 创建事件发送者
+var sub2 = subscriber.Subject<MyEventArgs>((sender, args) =>
+{
+    Console.WriteLine($"[MyEventArgs] {sender.SenderName}: {args.Message}");
+});
+
 var sender = new MyEventSender("Sender");
 
-// 发布事件
-eventBus.Publish(sender, new MyEventArgs("Hello, EventBus, This is 1 output!"));
+events.Publish(sender, new EventArgs("这是 1 个输出！"));     // 第1次发布事件(预期只有一个基类订阅者处理输出)
+Console.WriteLine();
 
-// 取消订阅
-subscription1.Dispose();
-subscription2.Dispose();
+events.Publish(sender, new MyEventArgs("这是 2 个输出！"));   // 第2次发布事件
+Console.WriteLine();
 
-// 发布事件（订阅处理程序已经被取消，不会有新的输出）
-eventBus.Publish(sender, new MyEventArgs("Hello, EventBus, This is 2 output!"));
+// 中途取已订阅的事件
+sub1.Dispose();
+sub2.Dispose();
+
+// 第3次发布事件(正常情况下不会有任何输出，因为被取消了)
+events.Publish(sender, new MyEventArgs("这是 3 个输出！"));
+
 
 // 阻塞
 Console.ReadLine();
-
-abstract record EventArgs(string BaseMessage);
-record MyEventArgs(string Message) : EventArgs(Message);
-record MyEventSender(string SenderName);
+record EventArgs(string BaseMessage);  // 基类
+record MyEventArgs(string Message) : EventArgs(Message);    // 派生类
+record MyEventSender(string SenderName);    // 事件发送者
